@@ -1,0 +1,16 @@
+{
+  "roots": {
+    "project": "/srv/kalshi",
+    "data": "/srv/kalshi/data",
+    "logs": "/srv/kalshi/logs",
+    "state": "/srv/kalshi/state"
+  },
+  "recorder_repo": "/srv/kalshi/recorder",
+  "recorder_health_file": "/srv/kalshi/state/recorder_health.json",
+  "allowed_services": [
+    "kalshi-recorder.service"
+  ],
+  "max_read_bytes": 2000000,
+  "max_write_bytes": 2000000,
+  "max_list_entries": 500
+}
