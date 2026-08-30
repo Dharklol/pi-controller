@@ -29,8 +29,8 @@ It deliberately cannot:
 
 ```text
 /opt/pi-controller/        root-owned MCP implementation
-/etc/pi-controller/        root-owned policy/config
-/var/lib/pi-controller/    tunnel-client state / runtime secret
+/etc/pi-controller/        root-owned policy/config + tunnel env
+/var/lib/pi-controller/    tunnel-client state
 
 /srv/kalshi/               MCP-writable project boundary
   recorder/                future Kalshi live-recorder Git checkout
@@ -46,7 +46,7 @@ The MCP server binds only to `127.0.0.1:8765` and exposes Streamable HTTP at `/m
 ```bash
 git clone https://github.com/Dharklol/pi-controller.git
 cd pi-controller
-chmod +x install.sh scripts/kalshi-recorder-control
+chmod +x install.sh setup_tunnel.sh scripts/kalshi-recorder-control
 sudo ./install.sh
 ```
 
@@ -55,6 +55,7 @@ Then verify:
 ```bash
 sudo systemctl status pi-controller --no-pager
 sudo journalctl -u pi-controller -n 50 --no-pager
+ss -ltnp | grep ':8765'
 ```
 
 The local MCP endpoint is:
@@ -63,48 +64,97 @@ The local MCP endpoint is:
 http://127.0.0.1:8765/mcp
 ```
 
+The installer uses Python 3.10+ and the stable MCP Python SDK v2 line.
+
 ## 2. Create an OpenAI Secure MCP Tunnel
 
-In OpenAI Platform tunnel settings, create a tunnel and associate it with the Platform organization and ChatGPT workspace/account that should use it. Keep the resulting `tunnel_id`.
+In OpenAI Platform tunnel settings:
 
-Install the current Linux ARM64 `tunnel-client` from OpenAI Platform tunnel settings or the latest public `openai/tunnel-client` release:
+1. Create a Secure MCP Tunnel.
+2. Associate the Platform organization that owns it.
+3. Associate the ChatGPT workspace/account that should use it.
+4. Keep the resulting `tunnel_id`.
+
+Creating/editing a tunnel needs **Tunnels Read + Manage**. Running `tunnel-client` or selecting the tunnel in ChatGPT needs **Tunnels Read + Use**.
+
+## 3. Install `tunnel-client` on the Pi
+
+Use the current Linux ARM64/aarch64 download from OpenAI Platform tunnel settings or the latest public `openai/tunnel-client` release.
 
 ```bash
 sudo install -m 0755 ./tunnel-client /usr/local/bin/tunnel-client
 tunnel-client version
+tunnel-client help quickstart
 ```
 
-Create a runtime API key with tunnel-use permission. **Do not put it in this repository or paste it into ChatGPT.** For the first bootstrap, export it only in the shell where you initialize the tunnel:
+The Pi needs outbound HTTPS to OpenAI; no public inbound port is required.
+
+## 4. Store the tunnel runtime key locally
+
+Create/use a runtime API key with tunnel-use permission.
+
+**Do not put it in GitHub and do not paste it into ChatGPT.**
+
+Run the tunnel setup once:
 
 ```bash
-export CONTROL_PLANE_API_KEY='YOUR_KEY_HERE'
+sudo ./setup_tunnel.sh tunnel_0123456789abcdef0123456789abcdef
 ```
 
-Then initialize the HTTP tunnel profile:
+On first run, the script creates:
+
+```text
+/etc/pi-controller/tunnel.env
+```
+
+and asks you to edit it:
 
 ```bash
-tunnel-client init \
-  --profile kalshi-pi \
-  --tunnel-id tunnel_0123456789abcdef0123456789abcdef \
-  --mcp-server-url http://127.0.0.1:8765/mcp
+sudo nano /etc/pi-controller/tunnel.env
+```
 
+Put exactly:
+
+```text
+CONTROL_PLANE_API_KEY=YOUR_RUNTIME_KEY
+```
+
+Save and exit, then rerun:
+
+```bash
+sudo ./setup_tunnel.sh tunnel_0123456789abcdef0123456789abcdef
+```
+
+That initializes the `kalshi-pi` tunnel profile, runs:
+
+```bash
 tunnel-client doctor --profile kalshi-pi --explain
 ```
 
-Keep `tunnel-client run --profile kalshi-pi` healthy while testing. Once the profile works, install the included systemd unit after setting the runtime-key environment securely outside Git.
+and enables the persistent `openai-kalshi-tunnel.service`.
 
-## 3. Connect from ChatGPT
+Check it with:
 
-Create a developer-mode app/plugin in ChatGPT, choose **Tunnel** as the connection type, then select this tunnel or paste its `tunnel_id`.
+```bash
+sudo systemctl status openai-kalshi-tunnel --no-pager
+sudo journalctl -u openai-kalshi-tunnel -n 100 --no-pager
+```
 
-Initial smoke tests in ChatGPT:
+## 5. Connect from ChatGPT
+
+Create a developer-mode app/plugin in ChatGPT:
+
+- Connection: **Tunnel**
+- select the available tunnel, or paste its `tunnel_id`.
+
+Initial smoke tests:
 
 - `system_info`
 - `disk_usage`
 - `list_files`
 - `service_status`
 
-The recorder service does not exist yet, so recorder-specific status can report `not-found` until we build it.
+The recorder service does not exist yet, so recorder-specific service status can report `not-found` until we build it.
 
 ## Bootstrap MCP tools
 
@@ -133,3 +183,11 @@ Bounded mutations:
 - `restart_service`
 
 There is intentionally no generic `shell(command)` tool.
+
+## Notes
+
+- `/opt/pi-controller` and `/etc/pi-controller` are root-owned so the MCP tools cannot modify their own authority.
+- `/srv/kalshi` is the project boundary the MCP account can operate.
+- Git pulls are fast-forward-only.
+- Direct writes into `.git` are blocked.
+- Raspberry Pi Connect remains the human/admin recovery path.
