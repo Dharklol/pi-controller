@@ -1,0 +1,3 @@
+kalshi-mcp ALL=(root) NOPASSWD: /usr/local/sbin/kalshi-recorder-control start kalshi-recorder.service
+kalshi-mcp ALL=(root) NOPASSWD: /usr/local/sbin/kalshi-recorder-control stop kalshi-recorder.service
+kalshi-mcp ALL=(root) NOPASSWD: /usr/local/sbin/kalshi-recorder-control restart kalshi-recorder.service
