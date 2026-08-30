@@ -22,7 +22,6 @@ PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictSUIDSGID=true
 LockPersonality=true
 RestrictNamespaces=true
 ReadWritePaths=/srv/kalshi /var/lib/pi-controller
