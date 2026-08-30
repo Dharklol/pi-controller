@@ -68,6 +68,14 @@ sudo -u kalshi-mcp \
     --profile kalshi-pi \
     --explain
 
+echo
+echo "Verifying OpenAI tunnel authorization with the runtime key..."
+sudo -u kalshi-mcp \
+  env -u OPENAI_ADMIN_KEY \
+  HOME=/var/lib/pi-controller \
+  CONTROL_PLANE_API_KEY="$CONTROL_PLANE_API_KEY" \
+  tunnel-client admin tunnels get "$TUNNEL_ID"
+
 systemctl enable --now openai-kalshi-tunnel.service
 
 echo
