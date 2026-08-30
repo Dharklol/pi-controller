@@ -2,12 +2,12 @@
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Run with sudo: sudo ./setup_tunnel.sh tunnel_..." >&2
+  echo "Run with sudo: sudo bash setup_tunnel.sh tunnel_..." >&2
   exit 1
 fi
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: sudo ./setup_tunnel.sh tunnel_0123456789abcdef0123456789abcdef" >&2
+  echo "Usage: sudo bash setup_tunnel.sh tunnel_0123456789abcdef0123456789abcdef" >&2
   exit 1
 fi
 
@@ -33,7 +33,7 @@ Add exactly:
 
 Do not put the key in GitHub or ChatGPT.
 Then rerun:
-  sudo ./setup_tunnel.sh $TUNNEL_ID
+  sudo bash setup_tunnel.sh $TUNNEL_ID
 EOF
   exit 3
 fi
@@ -51,11 +51,13 @@ if [[ -z "${CONTROL_PLANE_API_KEY:-}" ]]; then
   exit 4
 fi
 
+# Re-create the profile so rerunning setup is safe after key/config changes.
 sudo -u kalshi-mcp \
   env \
   HOME=/var/lib/pi-controller \
   CONTROL_PLANE_API_KEY="$CONTROL_PLANE_API_KEY" \
   tunnel-client init \
+    --force \
     --profile kalshi-pi \
     --tunnel-id "$TUNNEL_ID" \
     --mcp-server-url http://127.0.0.1:8765/mcp
@@ -69,7 +71,7 @@ sudo -u kalshi-mcp \
     --explain
 
 echo
-echo "Verifying OpenAI tunnel authorization with the runtime key..."
+echo "Verifying OpenAI tunnel metadata authorization with the runtime key..."
 sudo -u kalshi-mcp \
   env -u OPENAI_ADMIN_KEY \
   HOME=/var/lib/pi-controller \
@@ -82,4 +84,4 @@ echo
 echo "Tunnel service enabled."
 echo "Check with:"
 echo "  sudo systemctl status openai-kalshi-tunnel --no-pager"
-echo "  sudo journalctl -u openai-kalshi-tunnel -n 100 --no-pager"
+echo "  sudo journalctl -u openai-kalshi-tunnel --since '2 minutes ago' --no-pager"
