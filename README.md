@@ -81,11 +81,26 @@ Creating/editing a tunnel needs **Tunnels Read + Manage**. Running `tunnel-clien
 
 Use the current Linux ARM64/aarch64 download from OpenAI Platform tunnel settings or the latest public `openai/tunnel-client` release.
 
+For v0.0.13, the ARM64 archive is:
+
 ```bash
-sudo install -m 0755 ./tunnel-client /usr/local/bin/tunnel-client
-tunnel-client version
+wget -O tunnel-client-v0.0.13-linux-arm64.zip \
+  https://github.com/openai/tunnel-client/releases/download/v0.0.13/tunnel-client-v0.0.13-linux-arm64.zip
+
+rm -rf tunnel-client-dist
+mkdir tunnel-client-dist
+unzip tunnel-client-v0.0.13-linux-arm64.zip -d tunnel-client-dist
+
+sudo install -m 0755 tunnel-client-dist/tunnel-client /usr/local/bin/tunnel-client
+sudo install -m 0755 tunnel-client-dist/cloudflared /usr/local/bin/cloudflared
+sudo install -m 0644 tunnel-client-dist/cloudflared-manifest.json /usr/local/bin/cloudflared-manifest.json
+
+tunnel-client --version
+tunnel-client cloudflared version
 tunnel-client help quickstart
 ```
+
+The companion `cloudflared` binary and manifest should remain adjacent to `tunnel-client`; supported release archives are built that way intentionally.
 
 The Pi needs outbound HTTPS to OpenAI; no public inbound port is required.
 
