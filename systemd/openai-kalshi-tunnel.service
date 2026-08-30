@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenAI Secure MCP Tunnel for Kalshi Pi Controller
+After=network-online.target pi-controller.service
+Wants=network-online.target
+Requires=pi-controller.service
+
+[Service]
+Type=simple
+User=kalshi-mcp
+Group=kalshi-mcp
+Environment=HOME=/var/lib/pi-controller
+EnvironmentFile=/etc/pi-controller/tunnel.env
+ExecStart=/usr/local/bin/tunnel-client run --profile kalshi-pi
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+ReadWritePaths=/var/lib/pi-controller
+
+[Install]
+WantedBy=multi-user.target
