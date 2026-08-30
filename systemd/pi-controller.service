@@ -1,0 +1,31 @@
+[Unit]
+Description=Kalshi Pi Control MCP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kalshi-mcp
+Group=kalshi-mcp
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/pi-controller
+Environment=PI_CONTROLLER_CONFIG=/etc/pi-controller/config.json
+ExecStart=/opt/pi-controller/.venv/bin/python /opt/pi-controller/server.py
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictNamespaces=true
+ReadWritePaths=/srv/kalshi /var/lib/pi-controller
+
+[Install]
+WantedBy=multi-user.target
