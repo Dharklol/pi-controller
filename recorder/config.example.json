@@ -9,7 +9,7 @@
     "max_markets": 100,
     "min_event_volume_24h": 0.0
   },
-  "raw_dir": "/srv/kalshi/data/raw",
+  "raw_dir": "/srv/kalshi/data/kalshi-recorder/raw",
   "state_dir": "/srv/kalshi/state",
   "logs_dir": "/srv/kalshi/logs",
   "chunk_seconds": 300,
