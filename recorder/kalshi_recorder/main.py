@@ -53,50 +53,80 @@ async def run() -> None:
     cfg = load_config()
     configure_logging(cfg.logs_dir)
 
-    # Create health state before any network/auth/discovery work so startup
-    # failures are visible through the controller rather than only journald.
     health = HealthState(cfg.state_dir / "recorder_health.json")
+    health.phase = "starting"
     health.write_atomic(0)
 
+    queue: asyncio.Queue[dict] | None = None
+    writer: RawChunkWriter | None = None
+    tasks: list[asyncio.Task[object]] = []
+
     try:
-        creds = KalshiCredentials.from_environment()
-        universe = await discover_universe(cfg)
-    except Exception as exc:
-        health.last_error = f"{type(exc).__name__}: {exc}"
+        health.phase = "loading_credentials"
         health.write_atomic(0)
-        LOG.exception("recorder startup failed")
+        creds = KalshiCredentials.from_environment()
+
+        health.phase = "discovering"
+        health.write_atomic(0)
+        universe = await discover_universe(cfg, health)
+        LOG.info("selected %d events / %d markets", len(universe.event_tickers), len(universe.market_tickers))
+
+        queue = asyncio.Queue(maxsize=cfg.queue_max)
+        health.selected_events = universe.event_tickers
+        health.selected_markets = universe.market_tickers
+        health.last_error = None
+        health.phase = "initializing_writer"
+        health.write_atomic(queue.qsize())
+
+        writer = RawChunkWriter(cfg.raw_dir, cfg.chunk_seconds, cfg.chunk_max_bytes)
+        client = RecorderClient(cfg, creds, universe, queue, health)
+
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, stop.set)
+
+        tasks = [
+            asyncio.create_task(writer_loop(queue, writer, health), name="writer"),
+            asyncio.create_task(health_loop(queue, health, cfg.health_interval_seconds), name="health"),
+            asyncio.create_task(client.run_forever(), name="websocket"),
+        ]
+        stop_task = asyncio.create_task(stop.wait(), name="shutdown-signal")
+        health.phase = "connecting"
+        health.write_atomic(queue.qsize())
+        LOG.info("recorder started")
+
+        done, _ = await asyncio.wait([stop_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
+        if stop_task in done:
+            LOG.info("shutdown requested")
+        else:
+            for task in done:
+                if task is stop_task:
+                    continue
+                if task.cancelled():
+                    raise RuntimeError(f"worker task {task.get_name()} was cancelled unexpectedly")
+                exc = task.exception()
+                if exc is not None:
+                    raise RuntimeError(f"worker task {task.get_name()} failed: {type(exc).__name__}: {exc}") from exc
+                raise RuntimeError(f"worker task {task.get_name()} exited unexpectedly")
+    except Exception as exc:
+        health.connected = False
+        health.phase = "failed"
+        health.last_error = f"{type(exc).__name__}: {exc}"
+        health.write_atomic(queue.qsize() if queue is not None else 0)
+        LOG.exception("recorder failed")
         raise
-
-    LOG.info("selected %d events / %d markets", len(universe.event_tickers), len(universe.market_tickers))
-
-    queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=cfg.queue_max)
-    health.selected_events = universe.event_tickers
-    health.selected_markets = universe.market_tickers
-    health.last_error = None
-    health.write_atomic(queue.qsize())
-
-    writer = RawChunkWriter(cfg.raw_dir, cfg.chunk_seconds, cfg.chunk_max_bytes)
-    client = RecorderClient(cfg, creds, universe, queue, health)
-
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, stop.set)
-
-    tasks = [
-        asyncio.create_task(writer_loop(queue, writer, health), name="writer"),
-        asyncio.create_task(health_loop(queue, health, cfg.health_interval_seconds), name="health"),
-        asyncio.create_task(client.run_forever(), name="websocket"),
-    ]
-    LOG.info("recorder started")
-    await stop.wait()
-    LOG.info("shutdown requested")
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-    writer.close()
-    health.connected = False
-    health.write_atomic(queue.qsize())
+    finally:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if writer is not None:
+            writer.close()
+        if health.phase != "failed":
+            health.connected = False
+            health.phase = "stopped"
+            health.write_atomic(queue.qsize() if queue is not None else 0)
 
 
 def main() -> None:
