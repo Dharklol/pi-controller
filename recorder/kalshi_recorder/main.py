@@ -52,14 +52,29 @@ async def health_loop(queue: asyncio.Queue[dict], health: HealthState, interval:
 async def run() -> None:
     cfg = load_config()
     configure_logging(cfg.logs_dir)
-    creds = KalshiCredentials.from_environment()
-    universe = await discover_universe(cfg)
+
+    # Create health state before any network/auth/discovery work so startup
+    # failures are visible through the controller rather than only journald.
+    health = HealthState(cfg.state_dir / "recorder_health.json")
+    health.write_atomic(0)
+
+    try:
+        creds = KalshiCredentials.from_environment()
+        universe = await discover_universe(cfg)
+    except Exception as exc:
+        health.last_error = f"{type(exc).__name__}: {exc}"
+        health.write_atomic(0)
+        LOG.exception("recorder startup failed")
+        raise
+
     LOG.info("selected %d events / %d markets", len(universe.event_tickers), len(universe.market_tickers))
 
     queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=cfg.queue_max)
-    health = HealthState(cfg.state_dir / "recorder_health.json")
     health.selected_events = universe.event_tickers
     health.selected_markets = universe.market_tickers
+    health.last_error = None
+    health.write_atomic(queue.qsize())
+
     writer = RawChunkWriter(cfg.raw_dir, cfg.chunk_seconds, cfg.chunk_max_bytes)
     client = RecorderClient(cfg, creds, universe, queue, health)
 
