@@ -1,0 +1,23 @@
+{
+  "environment": "production",
+  "market_tickers": [],
+  "channels": ["orderbook_delta", "trade"],
+  "discovery": {
+    "enabled": true,
+    "min_siblings": 3,
+    "max_events": 30,
+    "max_markets": 250,
+    "min_event_volume_24h": 0.0
+  },
+  "raw_dir": "/srv/kalshi/data/raw",
+  "state_dir": "/srv/kalshi/state",
+  "logs_dir": "/srv/kalshi/logs",
+  "chunk_seconds": 300,
+  "chunk_max_bytes": 67108864,
+  "health_interval_seconds": 5,
+  "queue_max": 100000,
+  "reconnect_min_seconds": 1.0,
+  "reconnect_max_seconds": 30.0,
+  "ws_ping_interval_seconds": 20,
+  "ws_ping_timeout_seconds": 20
+}

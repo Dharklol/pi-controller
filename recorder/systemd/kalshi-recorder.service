@@ -1,0 +1,31 @@
+[Unit]
+Description=Kalshi Live L2 and Trade Recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kalshi-mcp
+Group=kalshi-mcp
+WorkingDirectory=/srv/kalshi/recorder/recorder
+Environment=PYTHONUNBUFFERED=1
+Environment=KALSHI_RECORDER_CONFIG=/srv/kalshi/recorder/recorder/config.json
+EnvironmentFile=/etc/kalshi-recorder/kalshi.env
+ExecStart=/srv/kalshi/recorder/.venv/bin/python -m kalshi_recorder.main
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictNamespaces=true
+ReadWritePaths=/srv/kalshi/data /srv/kalshi/logs /srv/kalshi/state
+
+[Install]
+WantedBy=multi-user.target
