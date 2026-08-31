@@ -2,6 +2,8 @@
 Description=Kalshi Live L2 and Trade Recorder
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -12,7 +14,8 @@ Environment=PYTHONUNBUFFERED=1
 Environment=KALSHI_RECORDER_CONFIG=/srv/kalshi/recorder/recorder/config.json
 EnvironmentFile=/etc/kalshi-recorder/kalshi.env
 ExecStart=/srv/kalshi/recorder/.venv/bin/python -m kalshi_recorder.main
-Restart=no
+Restart=on-failure
+RestartSec=5
 TimeoutStopSec=30
 
 ProtectSystem=strict
