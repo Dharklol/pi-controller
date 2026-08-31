@@ -14,6 +14,7 @@ class DiscoveryConfig:
     max_events: int
     max_markets: int
     min_event_volume_24h: float
+    cache_ttl_seconds: float
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ def load_config(path: str | Path | None = None) -> RecorderConfig:
         max_events=int(discovery_raw.get("max_events", 30)),
         max_markets=int(discovery_raw.get("max_markets", 250)),
         min_event_volume_24h=float(discovery_raw.get("min_event_volume_24h", 0.0)),
+        cache_ttl_seconds=float(discovery_raw.get("cache_ttl_seconds", 21600)),
     )
     cfg = RecorderConfig(
         environment=str(raw.get("environment", "production")),
@@ -94,6 +96,7 @@ def load_config(path: str | Path | None = None) -> RecorderConfig:
     _require_positive("chunk_max_bytes", cfg.chunk_max_bytes)
     _require_positive("health_interval_seconds", cfg.health_interval_seconds)
     _require_positive("queue_max", cfg.queue_max)
+    _require_positive("discovery.cache_ttl_seconds", discovery.cache_ttl_seconds)
     if discovery.min_siblings < 2:
         raise ValueError("discovery.min_siblings must be >= 2")
     if discovery.max_events < 1 or discovery.max_markets < 1:
