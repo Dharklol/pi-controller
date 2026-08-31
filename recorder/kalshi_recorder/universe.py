@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import httpx
 
@@ -26,6 +30,54 @@ def _number(value: object) -> Decimal:
     except (InvalidOperation, ValueError):
         return Decimal(0)
     return number if number.is_finite() else Decimal(0)
+
+
+def _cache_path(cfg: RecorderConfig) -> Path:
+    return cfg.state_dir / "universe_cache.json"
+
+
+def _cache_signature(cfg: RecorderConfig) -> dict[str, object]:
+    return {
+        "environment": cfg.environment,
+        "min_siblings": cfg.discovery.min_siblings,
+        "max_events": cfg.discovery.max_events,
+        "max_markets": cfg.discovery.max_markets,
+        "min_event_volume_24h": cfg.discovery.min_event_volume_24h,
+    }
+
+
+def _load_cached_universe(cfg: RecorderConfig) -> tuple[Universe, float] | None:
+    path = _cache_path(cfg)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != 1:
+            return None
+        if payload.get("signature") != _cache_signature(cfg):
+            return None
+        generated_unix = float(payload["generated_unix"])
+        age = max(0.0, time.time() - generated_unix)
+        event_tickers = tuple(str(x) for x in payload.get("event_tickers", []) if x)
+        market_tickers = tuple(str(x) for x in payload.get("market_tickers", []) if x)
+        if not market_tickers:
+            return None
+        return Universe(event_tickers, market_tickers), age
+    except (FileNotFoundError, OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+
+
+def _write_cached_universe(cfg: RecorderConfig, universe: Universe) -> None:
+    path = _cache_path(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "generated_unix": time.time(),
+        "signature": _cache_signature(cfg),
+        "event_tickers": list(universe.event_tickers),
+        "market_tickers": list(universe.market_tickers),
+    }
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
 
 
 async def _get_page(
@@ -58,11 +110,31 @@ async def _get_page(
 
 
 async def discover_universe(cfg: RecorderConfig, health: HealthState | None = None) -> Universe:
-    """Discover sibling-rich events from the canonical open-markets feed."""
+    """Discover sibling-rich events, reusing a fresh selection across restarts."""
     if cfg.market_tickers:
         return Universe(event_tickers=(), market_tickers=cfg.market_tickers)
     if not cfg.discovery.enabled:
         raise RuntimeError("no market_tickers configured and discovery is disabled")
+
+    cached = _load_cached_universe(cfg)
+    if cached is not None:
+        universe, age = cached
+        if age <= cfg.discovery.cache_ttl_seconds:
+            if health is not None:
+                health.phase = "using_cached_universe"
+                health.write_atomic(0)
+            LOG.info(
+                "using cached universe age_seconds=%.1f selected_events=%d selected_markets=%d",
+                age,
+                len(universe.event_tickers),
+                len(universe.market_tickers),
+            )
+            return universe
+        LOG.info(
+            "universe cache expired age_seconds=%.1f ttl_seconds=%.1f; refreshing",
+            age,
+            cfg.discovery.cache_ttl_seconds,
+        )
 
     by_event: dict[str, list[dict[str, object]]] = defaultdict(list)
     cursor = ""
@@ -156,6 +228,8 @@ async def discover_universe(cfg: RecorderConfig, health: HealthState | None = No
             f"min_siblings={cfg.discovery.min_siblings}, largest_event_sizes={largest})"
         )
 
+    universe = Universe(tuple(selected_events), tuple(selected_markets))
+    _write_cached_universe(cfg, universe)
     LOG.info(
         "discovery complete pages=%d markets_seen=%d events_seen=%d candidates=%d selected_events=%d selected_markets=%d",
         page_number,
@@ -165,4 +239,4 @@ async def discover_universe(cfg: RecorderConfig, health: HealthState | None = No
         len(selected_events),
         len(selected_markets),
     )
-    return Universe(tuple(selected_events), tuple(selected_markets))
+    return universe
