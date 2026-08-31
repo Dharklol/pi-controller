@@ -6,7 +6,7 @@
     "enabled": true,
     "min_siblings": 3,
     "max_events": 30,
-    "max_markets": 250,
+    "max_markets": 100,
     "min_event_volume_24h": 0.0
   },
   "raw_dir": "/srv/kalshi/data/raw",
