@@ -19,6 +19,7 @@ class HealthState:
     state_path: Path
     started_at: str = field(default_factory=utc_now)
     started_mono: float = field(default_factory=time.monotonic, repr=False)
+    phase: str = "starting"
     connected: bool = False
     connection_id: str | None = None
     last_connected_at: str | None = None
@@ -33,6 +34,9 @@ class HealthState:
     selected_markets: tuple[str, ...] = ()
     message_types: Counter[str] = field(default_factory=Counter)
     current_raw_chunk: str | None = None
+    discovery_pages: int = 0
+    discovery_markets_seen: int = 0
+    discovery_events_seen: int = 0
 
     def note_message(self, msg_type: str) -> None:
         self.messages_total += 1
@@ -41,12 +45,19 @@ class HealthState:
 
     def snapshot(self, queue_depth: int) -> dict[str, Any]:
         self.queue_high_watermark = max(self.queue_high_watermark, queue_depth)
+        if self.phase == "failed":
+            status = "failed"
+        elif self.connected:
+            status = "running"
+        else:
+            status = "degraded"
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "generated_at": utc_now(),
             "started_at": self.started_at,
             "uptime_seconds": max(0.0, time.monotonic() - self.started_mono),
-            "status": "running" if self.connected else "degraded",
+            "status": status,
+            "phase": self.phase,
             "connected": self.connected,
             "connection_id": self.connection_id,
             "last_connected_at": self.last_connected_at,
@@ -59,6 +70,9 @@ class HealthState:
             "snapshots_requested": self.snapshots_requested,
             "queue_depth": queue_depth,
             "queue_high_watermark": self.queue_high_watermark,
+            "discovery_pages": self.discovery_pages,
+            "discovery_markets_seen": self.discovery_markets_seen,
+            "discovery_events_seen": self.discovery_events_seen,
             "selected_event_count": len(self.selected_events),
             "selected_market_count": len(self.selected_markets),
             "selected_events": list(self.selected_events),
